@@ -5,7 +5,7 @@
 ## Usage
 
 ```yaml
-- uses: Framework-R-D/action-prepare-fix-outputs@v1  # pin to commit SHA in production
+- uses: Framework-R-D/action-prepare-fix-outputs@575967002716f2bdeb18caaf9253a4d9aca1d534 # v1
   with:
     input-name: value
 ```
