@@ -14,9 +14,9 @@ extracted for standalone reuse.
 
 | Name | Description | Required | Default |
 | ---- | ----------- | -------- | ------- |
-| `ref` | Manual ref override | False |  |
-| `repo` | Manual repo override | False |  |
-| `checkout-path` | Manual checkout path override | False |  |
+| `ref` | Manual ref override | False | |
+| `repo` | Manual repo override | False | |
+| `checkout-path` | Manual checkout path override | False | |
 
 **Outputs:**
 
