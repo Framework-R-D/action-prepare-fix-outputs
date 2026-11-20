@@ -57,6 +57,28 @@ class ResolveTargetTests(unittest.TestCase):
                 self.assertEqual(outputs["sha"], SHA)
                 self.assertEqual(self.lookup.call_count, int(event == "workflow_dispatch"))
 
+    def test_repository_override_keeps_pull_request_head_branch_default(self) -> None:
+        """An explicit repository does not erase the event's omitted branch value."""
+        payload = self.payload | {
+            "pull_request": {
+                "head": {
+                    "repo": {"full_name": "Example/target"},
+                    "ref": "feature",
+                    "sha": SHA,
+                }
+            }
+        }
+        outputs = resolve_target(
+            self.inputs | {"GITHUB_EVENT_NAME": "pull_request", "INPUT_REPO": "Example/target"},
+            payload,
+            self.lookup,
+        )
+        self.assertEqual(
+            (outputs["repo"], outputs["ref"], outputs["sha"]),
+            ("Example/target", "feature", SHA),
+        )
+        self.lookup.assert_called_once_with("Example/target", "feature")
+
     def test_comment_override_cannot_bypass_approval(self) -> None:
         """Validate the exact fork identity even when all overrides are supplied."""
         inputs = self.inputs | {"GITHUB_EVENT_NAME": "issue_comment"}
@@ -157,7 +179,7 @@ class ResolveTargetTests(unittest.TestCase):
         """Exercise API plumbing through mocks without using GitHub secrets."""
         response = MagicMock()
         response.__enter__.return_value = response
-        response.read.return_value = json.dumps({"sha": SHA}).encode()
+        response.read.return_value = json.dumps({"object": {"sha": SHA}}).encode()
         with patch("resolve_target.build_opener") as opener:
             opener.return_value.open.return_value = response
             self.assertEqual(
@@ -168,13 +190,28 @@ class ResolveTargetTests(unittest.TestCase):
             )
             request = opener.return_value.open.call_args.args[0]
             self.assertEqual(request.get_method(), "GET")
-            self.assertIn("feature%2Ftest", request.full_url)
-            self.assertIsInstance(opener.call_args.args[0], NoRedirect)
+        self.assertIn("/git/ref/heads/feature/test", request.full_url)
+        self.assertIsInstance(opener.call_args.args[0], NoRedirect)
+        with patch("resolve_target.build_opener") as opener:
             opener.return_value.open.side_effect = HTTPError(
                 request.full_url, 403, "denied", {}, None
             )
             with self.assertRaisesRegex(ValueError, "metadata lookup failed"):
                 github_commit_sha("Example/target", "feature", {"GITHUB_TOKEN": "TEST_SENTINEL"})
+
+    def test_tag_namespace_is_looked_up_as_a_branch(self) -> None:
+        """A tags/v1 branch must not resolve to the v1 tag namespace."""
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = json.dumps({"object": {"sha": SHA}}).encode()
+        with patch("resolve_target.build_opener") as opener:
+            opener.return_value.open.return_value = response
+            self.assertEqual(
+                github_commit_sha("Example/target", "tags/v1", {"GITHUB_TOKEN": "TEST_SENTINEL"}),
+                SHA,
+            )
+        request = opener.return_value.open.call_args.args[0]
+        self.assertIn("/git/ref/heads/tags/v1", request.full_url)
 
 
 if __name__ == "__main__":

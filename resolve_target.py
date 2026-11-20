@@ -41,7 +41,7 @@ def github_commit_sha(repository: str, ref: str, environment: Mapping[str, str])
     ):
         raise ValueError("A trusted HTTPS GitHub API endpoint and token are required")
     request = Request(
-        f"{api.rstrip('/')}/repos/{repository}/commits/{quote(ref, safe='')}?per_page=1",
+        f"{api.rstrip('/')}/repos/{repository}/git/ref/{quote(f'heads/{ref}', safe='/')}",
         headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
         method="GET",
     )
@@ -50,7 +50,7 @@ def github_commit_sha(repository: str, ref: str, environment: Mapping[str, str])
             body = response.read(8 * 1024 * 1024 + 1)
         if len(body) > 8 * 1024 * 1024:
             raise ValueError("Metadata response is too large")
-        return validate_sha(json.loads(body)["sha"])
+        return validate_sha(json.loads(body)["object"]["sha"])
     except (URLError, OSError, ValueError, KeyError, TypeError) as error:
         raise ValueError("GitHub commit metadata lookup failed") from error
 
@@ -135,10 +135,12 @@ def resolve_target(
         repository = inputs.get("GET_PR_REPO", "")
         ref = inputs.get("GET_PR_REF", "")
     elif event == "pull_request":
-        if not inputs.get("INPUT_REPO") and not inputs.get("INPUT_REF"):
-            head = payload["pull_request"]["head"]
+        head = payload["pull_request"]["head"]
+        if not inputs.get("INPUT_REPO"):
             repository = head["repo"]["full_name"]
+        if not ref:
             ref = head["ref"]
+        if repository == head["repo"]["full_name"] and not inputs.get("INPUT_REF"):
             if sha and sha != head["sha"]:
                 raise ValueError("Source SHA differs from PR event snapshot")
             sha = sha or head["sha"]
